@@ -27,5 +27,15 @@ export function useTasks(closeId) {
 
   useEffect(() => { fetch() }, [fetch])
 
-  return { grouped, loading, error, refetch: fetch }
+  function updateTaskLocal(taskId, updates) {
+    setGrouped(prev => {
+      const next = {}
+      for (const [section, tasks] of Object.entries(prev)) {
+        next[section] = tasks.map(t => t.id === taskId ? { ...t, ...updates } : t)
+      }
+      return next
+    })
+  }
+
+  return { grouped, loading, error, refetch: fetch, updateTaskLocal }
 }
