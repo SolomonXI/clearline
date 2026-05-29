@@ -26,3 +26,7 @@ export function timeAgo(dateStr) {
   if (hours < 24) return `${hours}h ago`
   return `${Math.floor(hours / 24)}d ago`
 }
+
+// Converts frontend display format back to backend enum
+// not-started → NOT_STARTED, in-progress → IN_PROGRESS
+export const toEnum = s => s.toUpperCase().replace(/-/g, '_')

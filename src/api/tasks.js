@@ -9,3 +9,8 @@ export async function updateTask(taskId, updates) {
   const { data } = await client.patch(`/tasks/${taskId}`, updates)
   return data
 }
+
+export async function createTask(closeId, dto) {
+  const { data } = await client.post(`/closes/${closeId}/tasks`, dto)
+  return data
+}
