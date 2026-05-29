@@ -1,0 +1,49 @@
+/* Buttons */
+.btn-primary {
+  padding: 6px 14px; border: none; border-radius: 7px;
+  background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 600; letter-spacing: -0.1px;
+  transition: opacity 0.15s;
+}
+.btn-primary:hover { opacity: 0.88; }
+
+.btn-ghost {
+  padding: 6px 12px; border-radius: 7px;
+  border: 1px solid var(--btn-ghost-border);
+  background: var(--btn-ghost-bg); color: var(--btn-ghost-text);
+  font-size: 11px; font-weight: 600;
+  display: flex; align-items: center; gap: 5px;
+  transition: border-color 0.15s;
+}
+.btn-ghost:hover { border-color: var(--text-faint); }
+
+.btn-signoff {
+  flex: 1; padding: 7px 0;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 7px;
+  font-size: 11px; font-weight: 600;
+}
+
+.btn-flag {
+  padding: 7px 12px;
+  background: var(--btn-ghost-bg); color: var(--text-faint);
+  border: 1px solid var(--btn-ghost-border); border-radius: 7px;
+  font-size: 11px; font-weight: 600;
+}
+
+/* Form elements */
+.field-input {
+  width: 100%; padding: 8px 11px;
+  border: 1px solid var(--compose-border);
+  border-radius: 7px; background: var(--compose-bg);
+  color: var(--text-secondary); font-size: 12px;
+  transition: border-color 0.15s, background 0.2s;
+}
+.field-input:focus { outline: none; border-color: var(--accent); background: var(--bg-surface); }
+.field-input::placeholder { color: var(--text-ghost); }
+
+/* Labels */
+.eyebrow {
+  font-size: 9px; font-weight: 600; color: var(--text-faint);
+  text-transform: uppercase; letter-spacing: 0.6px;
+}
