@@ -1,4 +1,5 @@
 import Chip from './Chip.jsx'
+import OwnerDropdown from './OwnerDropdown.jsx'
 
 const checkStyle = {
   overdue:       { border: '1.5px solid var(--check-over-border)', background: 'var(--check-over-bg)' },
@@ -8,9 +9,17 @@ const checkStyle = {
   'not-started': { border: '1.5px solid var(--border)' },
 }
 
-export default function TaskRow({ task, active, onClick }) {
+export default function TaskRow({
+  task, active, onClick,
+  showOwnerDropdown = false,
+  members = [],
+  onOwnerClick,
+  onOwnerUpdated,
+  onOwnerDropdownClose,
+}) {
   const isDone = task.status === 'done'
   const isOverdue = task.status === 'overdue'
+  const ownerMember = members.find(m => m.id === task.ownerId) ?? null
 
   return (
     <div
@@ -37,7 +46,9 @@ export default function TaskRow({ task, active, onClick }) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         ...checkStyle[task.status],
       }}>
-        {isDone && <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--check-done-dot)' }} />}
+        {isDone && (
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--check-done-dot)' }} />
+        )}
       </div>
 
       {/* Body */}
@@ -51,8 +62,44 @@ export default function TaskRow({ task, active, onClick }) {
           {task.name}
         </div>
         <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 1, whiteSpace: 'nowrap' }}>
-          Due Day {task.dueDay} · {task.ownerFull}
+          Due Day {task.dueDay}
         </div>
+      </div>
+
+      {/* Owner avatar — click to open dropdown */}
+      <div
+        style={{ position: 'relative', flexShrink: 0 }}
+        onClick={onOwnerClick}
+        title={ownerMember ? `${ownerMember.name} — click to reassign` : 'Unassigned — click to assign'}
+      >
+        {ownerMember ? (
+          <div style={{
+            width: 22, height: 22, borderRadius: '50%', cursor: 'pointer',
+            background: `linear-gradient(135deg, ${ownerMember.color}, #7C3AED)`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 8, fontWeight: 700, color: '#fff',
+          }}>
+            {ownerMember.initials}
+          </div>
+        ) : (
+          <div style={{
+            width: 22, height: 22, borderRadius: '50%', cursor: 'pointer',
+            border: '1.5px dashed var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 12, color: 'var(--text-ghost)',
+          }}>
+            +
+          </div>
+        )}
+        {showOwnerDropdown && (
+          <OwnerDropdown
+            currentOwnerId={task.ownerId ?? null}
+            taskId={task.id}
+            members={members}
+            onUpdated={onOwnerUpdated}
+            onClose={onOwnerDropdownClose}
+          />
+        )}
       </div>
 
       <Chip status={task.status} />
