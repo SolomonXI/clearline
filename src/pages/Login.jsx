@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import ThemeToggle from '../components/ThemeToggle.jsx'
 
@@ -6,6 +7,21 @@ export default function Login() {
   const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      await login(email, password)
+    } catch (err) {
+      setError(err.response?.data?.message ?? 'Invalid email or password.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', height: '100vh', background: 'var(--bg-page)' }}>
@@ -47,18 +63,31 @@ export default function Login() {
         <div style={{ width: 400, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '36px 32px', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
           <h2 style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.4px', marginBottom: 4 }}>Welcome back</h2>
           <p style={{ fontSize: 12, color: 'var(--text-faint)', marginBottom: 24 }}>Sign in to your Clearline workspace</p>
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Email</label>
-            <input className="field-input" type="email" placeholder="sarah@acmecorp.com" value={email} onChange={e => setEmail(e.target.value)} />
-          </div>
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Password</label>
-            <input className="field-input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
-          </div>
-          <button className="btn-primary" style={{ width: '100%', padding: '10px 0', fontSize: 13 }} onClick={login}>
-            Sign in
-          </button>
-          <p style={{ textAlign: 'center', marginTop: 16, fontSize: 11, color: 'var(--accent-text)', cursor: 'pointer' }}>Forgot your password?</p>
+
+          {error && (
+            <div style={{ background: 'var(--error-bg,#fef2f2)', border: '1px solid var(--error-border,#fecaca)', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: 'var(--error-text,#dc2626)', marginBottom: 16 }}>
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Email</label>
+              <input className="field-input" type="email" placeholder="sarah@acmecorp.com" value={email} onChange={e => setEmail(e.target.value)} required />
+            </div>
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Password</label>
+              <input className="field-input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
+            </div>
+            <button type="submit" className="btn-primary" style={{ width: '100%', padding: '10px 0', fontSize: 13, opacity: loading ? 0.7 : 1, cursor: loading ? 'not-allowed' : 'pointer' }} disabled={loading}>
+              {loading ? 'Signing in...' : 'Sign in'}
+            </button>
+          </form>
+
+          <p style={{ textAlign: 'center', marginTop: 16, fontSize: 11, color: 'var(--text-faint)' }}>
+            Don't have an account?{' '}
+            <Link to="/register" style={{ color: 'var(--accent-text)', textDecoration: 'none', fontWeight: 600 }}>Create one</Link>
+          </p>
         </div>
       </div>
     </div>

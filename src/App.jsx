@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext.jsx'
 import Layout from './components/Layout.jsx'
 import Login from './pages/Login.jsx'
+import Register from './pages/Register.jsx'
 import Overview from './pages/Overview.jsx'
 import CloseList from './pages/CloseList.jsx'
 import CloseDetail from './pages/CloseDetail.jsx'
@@ -14,6 +15,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route element={<Layout />}>
             <Route path="/overview"  element={<Overview />} />
             <Route path="/close"     element={<CloseList />} />
