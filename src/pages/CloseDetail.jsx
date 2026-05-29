@@ -8,6 +8,8 @@ import ProgressBar from '../components/ProgressBar.jsx'
 import AiInsight from '../components/AiInsight.jsx'
 import Avatar from '../components/Avatar.jsx'
 import Chip from '../components/Chip.jsx'
+import InlineTaskAdd from '../components/InlineTaskAdd.jsx'
+import StatusDropdown from '../components/StatusDropdown.jsx'
 import { useClose } from '../hooks/useCloses.js'
 import { useTasks } from '../hooks/useTasks.js'
 import { useComments } from '../hooks/useComments.js'
@@ -27,17 +29,19 @@ export default function CloseDetail() {
   const { id } = useParams()
   const [searchParams] = useSearchParams()
   const { close, loading: closeLoading } = useClose(id)
-  const { grouped, loading: tasksLoading } = useTasks(id)
+  const { grouped, loading: tasksLoading, refetch: refetchTasks } = useTasks(id)
   const allTasks = Object.values(grouped).flat()
 
   const [activeTask, setActiveTask] = useState(null)
   const [commentText, setCommentText] = useState('')
   const [postingComment, setPostingComment] = useState(false)
+  const [activeAddSection, setActiveAddSection] = useState(null)
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false)
 
   const { comments, refetch: refetchComments } = useComments(activeTask?.id)
 
-  // Set initial active task once tasks load
   useEffect(() => {
+    setStatusDropdownOpen(false)
     if (allTasks.length === 0) return
     const taskIdParam = searchParams.get('task')
     if (taskIdParam) {
@@ -61,6 +65,11 @@ export default function CloseDetail() {
     }
   }
 
+  function handleStatusUpdate(newDisplayStatus) {
+    setActiveTask(t => ({ ...t, status: newDisplayStatus }))
+    refetchTasks()
+  }
+
   if (closeLoading || tasksLoading) return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <Topbar breadcrumb="Close Workspace" title="Loading..." />
@@ -81,7 +90,6 @@ export default function CloseDetail() {
         actions={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button className="btn-ghost">Export PDF</button>
-            <button className="btn-primary">+ Add task</button>
           </div>
         }
       />
@@ -89,7 +97,6 @@ export default function CloseDetail() {
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* Left: task list */}
         <div style={{ width: 340, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Stats strip */}
           <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
             <StatCell label="Done"     value={stats.done} />
             <StatCell label="Overdue"  value={stats.overdue} color="var(--stat-over)" />
@@ -109,9 +116,26 @@ export default function CloseDetail() {
                       key={t.id}
                       task={t}
                       active={activeTask?.id === t.id}
-                      onClick={() => setActiveTask(t)}
+                      onClick={() => { setActiveTask(t); setStatusDropdownOpen(false) }}
                     />
                   ))}
+                  {activeAddSection === sectionKey ? (
+                    <InlineTaskAdd
+                      closeId={id}
+                      section={sectionKey}
+                      onCreated={refetchTasks}
+                      onCancel={() => setActiveAddSection(null)}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setActiveAddSection(sectionKey)}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 18px 6px 46px', background: 'none', border: 'none', borderTop: '1px solid var(--border-subtle)', fontSize: 11, color: 'var(--text-ghost)', cursor: 'pointer', fontFamily: 'inherit' }}
+                      onMouseEnter={e => e.currentTarget.style.color = 'var(--text-faint)'}
+                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-ghost)'}
+                    >
+                      + Add task
+                    </button>
+                  )}
                 </div>
               )
             })}
@@ -124,7 +148,6 @@ export default function CloseDetail() {
         {/* Right: task detail */}
         {activeTask ? (
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Task header */}
             <div>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
                 <div style={{ flex: 1 }}>
@@ -135,7 +158,20 @@ export default function CloseDetail() {
                     {SECTION_LABELS[activeTask.section] ?? activeTask.section} · Due Day {activeTask.dueDay}
                   </div>
                 </div>
-                <Chip status={activeTask.status} />
+                {/* Clickable chip opens status dropdown */}
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  <div onClick={() => setStatusDropdownOpen(o => !o)} style={{ cursor: 'pointer' }} title="Click to change status">
+                    <Chip status={activeTask.status} />
+                  </div>
+                  {statusDropdownOpen && (
+                    <StatusDropdown
+                      currentStatus={activeTask.status}
+                      taskId={activeTask.id}
+                      onUpdated={handleStatusUpdate}
+                      onClose={() => setStatusDropdownOpen(false)}
+                    />
+                  )}
+                </div>
               </div>
 
               {activeTask.ownerFull && (
@@ -146,10 +182,8 @@ export default function CloseDetail() {
               )}
             </div>
 
-            {/* AI Insight */}
             <AiInsight taskId={activeTask.id} />
 
-            {/* Comments */}
             <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
               <div style={{ padding: '11px 14px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.1px' }}>
                 Comments {comments.length > 0 && <span style={{ color: 'var(--text-faint)', fontWeight: 400 }}>({comments.length})</span>}
@@ -172,17 +206,12 @@ export default function CloseDetail() {
                 </div>
               ))}
 
-              {/* Comment input */}
               <form onSubmit={handlePostComment} style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
                 <input
                   value={commentText}
                   onChange={e => setCommentText(e.target.value)}
                   placeholder="Add a comment..."
-                  style={{
-                    flex: 1, background: 'var(--bg-page)', border: '1px solid var(--border)',
-                    borderRadius: 6, padding: '7px 10px', fontSize: 12,
-                    color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit',
-                  }}
+                  style={{ flex: 1, background: 'var(--bg-page)', border: '1px solid var(--border)', borderRadius: 6, padding: '7px 10px', fontSize: 12, color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit' }}
                 />
                 <button type="submit" disabled={!commentText.trim() || postingComment} className="btn-primary" style={{ fontSize: 11, padding: '7px 14px' }}>
                   Post
