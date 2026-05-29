@@ -8,50 +8,76 @@ import ProgressBar from '../components/ProgressBar.jsx'
 import AiInsight from '../components/AiInsight.jsx'
 import Avatar from '../components/Avatar.jsx'
 import Chip from '../components/Chip.jsx'
-import { getClose } from '../data/closes.js'
-import { getTasksForClose, closeStats, getTaskInsight } from '../data/tasks.js'
-import { team } from '../data/team.js'
+import { useClose } from '../hooks/useCloses.js'
+import { useTasks } from '../hooks/useTasks.js'
+import { useComments } from '../hooks/useComments.js'
+import { postComment } from '../api/comments.js'
+import { timeAgo } from '../utils/enums.js'
 
-const SECTIONS = ['ap', 'ar', 'gl', 'cash', 'fixed-assets', 'revenue']
-
-const FILE_ICONS = { pdf: '📄', xlsx: '📊', default: '📎' }
-function fileIcon(name) {
-  const ext = name.split('.').pop().toLowerCase()
-  return FILE_ICONS[ext] || FILE_ICONS.default
-}
-
-function getMember(initials) {
-  return team.find(m => m.initials === initials)
+const SECTION_LABELS = {
+  ap: 'Accounts Payable',
+  ar: 'Accounts Receivable',
+  gl: 'General Ledger',
+  cash: 'Cash',
+  'fixed-assets': 'Fixed Assets',
+  revenue: 'Revenue',
 }
 
 export default function CloseDetail() {
   const { id } = useParams()
   const [searchParams] = useSearchParams()
-  const closeData = getClose(id)
-  const tasks = getTasksForClose(id)
-  const stats = closeStats(id)
-  const pct = Math.round((stats.done / stats.total) * 100)
+  const { close, loading: closeLoading } = useClose(id)
+  const { grouped, loading: tasksLoading } = useTasks(id)
+  const allTasks = Object.values(grouped).flat()
 
-  const firstOverdue = tasks.find(t => t.status === 'overdue')
-  const [activeTask, setActiveTask] = useState(firstOverdue || tasks[0])
+  const [activeTask, setActiveTask] = useState(null)
+  const [commentText, setCommentText] = useState('')
+  const [postingComment, setPostingComment] = useState(false)
 
+  const { comments, refetch: refetchComments } = useComments(activeTask?.id)
+
+  // Set initial active task once tasks load
   useEffect(() => {
-    const taskId = searchParams.get('task')
-    if (taskId) {
-      const t = tasks.find(t => t.id === taskId)
-      if (t) setActiveTask(t)
+    if (allTasks.length === 0) return
+    const taskIdParam = searchParams.get('task')
+    if (taskIdParam) {
+      const found = allTasks.find(t => t.id === taskIdParam)
+      if (found) { setActiveTask(found); return }
     }
-  }, [searchParams])
+    const firstOverdue = allTasks.find(t => t.status === 'overdue')
+    setActiveTask(firstOverdue ?? allTasks[0])
+  }, [grouped]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!closeData) return <div style={{ padding: 32, color: 'var(--text-primary)' }}>Close not found</div>
+  async function handlePostComment(e) {
+    e.preventDefault()
+    if (!commentText.trim() || !activeTask) return
+    setPostingComment(true)
+    try {
+      await postComment(activeTask.id, commentText.trim())
+      setCommentText('')
+      refetchComments()
+    } finally {
+      setPostingComment(false)
+    }
+  }
 
-  const insight = activeTask ? getTaskInsight(activeTask.id) : null
+  if (closeLoading || tasksLoading) return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <Topbar breadcrumb="Close Workspace" title="Loading..." />
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-faint)', fontSize: 13 }}>Loading close...</div>
+    </div>
+  )
+
+  if (!close) return <div style={{ padding: 32, color: 'var(--text-primary)' }}>Close not found</div>
+
+  const stats = close.stats
+  const pct = stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <Topbar
         breadcrumb="Close Workspace"
-        title={`${closeData.period} Close`}
+        title={`${close.period} Close`}
         actions={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button className="btn-ghost">Export PDF</button>
@@ -60,141 +86,115 @@ export default function CloseDetail() {
         }
       />
 
-      <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 340px' }}>
-
-        {/* ── LEFT: checklist ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--border)' }}>
-          {/* Close header */}
-          <div style={{ background: 'var(--bg-surface)', padding: '16px 22px 14px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 17, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
-              {closeData.period} Close
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 3 }}>
-              Started {closeData.startDate} · Day {closeData.currentDay} of target {closeData.targetDays} · {closeData.entity}
-            </div>
-            <div style={{ display: 'flex', gap: 0, marginTop: 12, background: 'var(--stat-cell-bg)', border: '1px solid var(--stat-cell-border)', borderRadius: 8, overflow: 'hidden' }}>
-              <StatCell value={stats.done}        label="Done"        color="var(--stat-done)" />
-              <StatCell value={stats.inProgress}  label="In progress" color="var(--stat-prog)" />
-              <StatCell value={stats.overdue}     label="Overdue"     color="var(--stat-over)" />
-              <StatCell value={stats.notStarted}  label="Not started" color="var(--stat-ns)"   last />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <ProgressBar pct={pct} />
-            </div>
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* Left: task list */}
+        <div style={{ width: 340, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Stats strip */}
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
+            <StatCell label="Done"     value={stats.done} />
+            <StatCell label="Overdue"  value={stats.overdue} color="var(--stat-over)" />
+            <StatCell label="Progress" value={`${pct}%`} />
+            <StatCell label="Total"    value={stats.total} />
           </div>
 
-          {/* Task list */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            {SECTIONS.map(section => {
-              const sectionTasks = tasks.filter(t => t.section === section)
-              if (!sectionTasks.length) return null
-              const doneCnt = sectionTasks.filter(t => t.status === 'done').length
+            {Object.entries(grouped).map(([sectionKey, tasks]) => {
+              const label = SECTION_LABELS[sectionKey.toLowerCase().replace(/_/g, '-')] ?? sectionKey
+              const done = tasks.filter(t => t.status === 'done').length
               return (
-                <div key={section}>
-                  <SectionHeader section={section} done={doneCnt} total={sectionTasks.length} />
-                  {sectionTasks.map(task => (
+                <div key={sectionKey}>
+                  <SectionHeader label={label} done={done} total={tasks.length} />
+                  {tasks.map(t => (
                     <TaskRow
-                      key={task.id}
-                      task={task}
-                      active={activeTask?.id === task.id}
-                      onClick={() => setActiveTask(task)}
+                      key={t.id}
+                      task={t}
+                      active={activeTask?.id === t.id}
+                      onClick={() => setActiveTask(t)}
                     />
                   ))}
                 </div>
               )
             })}
+            {allTasks.length === 0 && (
+              <div style={{ padding: 24, fontSize: 12, color: 'var(--text-faint)', textAlign: 'center' }}>No tasks yet.</div>
+            )}
           </div>
         </div>
 
-        {/* ── RIGHT: task detail ── */}
-        <div style={{ background: 'var(--bg-surface)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {activeTask ? (
-            <>
-              {/* Header */}
-              <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 5 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: `var(--pip-${activeTask.section === 'fixed-assets' ? 'fa' : activeTask.section})` }} />
-                  {activeTask.section.toUpperCase().replace('-', ' ')} ·{' '}
-                  <Chip status={activeTask.status} />
-                </div>
-                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.3px', lineHeight: 1.3 }}>
-                  {activeTask.name}
-                </div>
-                <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-                  <div style={{ flex: 1, background: 'var(--meta-bg)', borderRadius: 7, padding: '7px 10px' }}>
-                    <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>Owner</div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{activeTask.ownerFull}</div>
-                  </div>
-                  <div style={{ flex: 1, background: activeTask.status === 'overdue' ? 'var(--meta-over-bg)' : 'var(--meta-bg)', borderRadius: 7, padding: '7px 10px' }}>
-                    <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>Due</div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: activeTask.status === 'overdue' ? 'var(--meta-over-text)' : 'var(--text-primary)' }}>
-                      Day {activeTask.dueDay}{activeTask.status === 'overdue' ? ' — late' : ''}
-                    </div>
+        {/* Right: task detail */}
+        {activeTask ? (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Task header */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.3px', lineHeight: 1.3 }}>
+                    {activeTask.name}
+                  </h2>
+                  <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 4 }}>
+                    {SECTION_LABELS[activeTask.section] ?? activeTask.section} · Due Day {activeTask.dueDay}
                   </div>
                 </div>
+                <Chip status={activeTask.status} />
               </div>
 
-              {/* AI Insight */}
-              {insight && (
-                <div style={{ padding: '14px 18px 0', flexShrink: 0 }}>
-                  <AiInsight summary={insight.summary} detail={insight.detail} />
+              {activeTask.ownerFull && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Avatar initials={activeTask.owner} />
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{activeTask.ownerFull}</span>
                 </div>
               )}
-
-              {/* Attachments */}
-              {activeTask.attachments.length > 0 && (
-                <div style={{ padding: '13px 18px 0', flexShrink: 0 }}>
-                  <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 7 }}>Attachments</div>
-                  {activeTask.attachments.map(f => (
-                    <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', border: '1px solid var(--file-row-border)', background: 'var(--file-row-bg)', borderRadius: 7, marginBottom: 5, cursor: 'pointer' }}>
-                      <div style={{ width: 24, height: 24, borderRadius: 5, background: 'var(--bg-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>
-                        {fileIcon(f)}
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>{f}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Activity */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '13px 18px' }}>
-                <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>Activity</div>
-                {activeTask.comments.length === 0 && (
-                  <p style={{ fontSize: 11, color: 'var(--text-ghost)', fontStyle: 'italic' }}>No comments yet.</p>
-                )}
-                {activeTask.comments.map((c, i) => {
-                  const member = getMember(c.author)
-                  return (
-                    <div key={i} style={{ display: 'flex', gap: 9, marginBottom: 10 }}>
-                      <Avatar initials={c.author} color={member?.color || '#4F6EF7'} size={22} />
-                      <div style={{ flex: 1, background: 'var(--comment-bg)', border: '1px solid var(--border-subtle)', borderRadius: 8, padding: '8px 10px' }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>
-                          {c.authorFull} <span style={{ color: 'var(--text-faint)', fontWeight: 400, marginLeft: 5 }}>{c.time}</span>
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>{c.text}</div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* Compose */}
-              <div style={{ padding: '10px 18px 14px', borderTop: '1px solid var(--border-subtle)', flexShrink: 0 }}>
-                <textarea className="field-input" placeholder="Add a comment or note…" style={{ height: 44, resize: 'none', marginBottom: 7, display: 'block' }} />
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn-signoff">Sign off task</button>
-                  <button className="btn-flag">Flag</button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-ghost)', fontSize: 12 }}>
-              Select a task to view details
             </div>
-          )}
-        </div>
+
+            {/* AI Insight */}
+            <AiInsight taskId={activeTask.id} />
+
+            {/* Comments */}
+            <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ padding: '11px 14px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.1px' }}>
+                Comments {comments.length > 0 && <span style={{ color: 'var(--text-faint)', fontWeight: 400 }}>({comments.length})</span>}
+              </div>
+
+              {comments.length === 0 && (
+                <div style={{ padding: '16px 14px', fontSize: 12, color: 'var(--text-faint)' }}>No comments yet.</div>
+              )}
+
+              {comments.map(c => (
+                <div key={c.id} style={{ padding: '10px 14px', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: 10 }}>
+                  <Avatar initials={c.author.initials} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)' }}>{c.author.name}</span>
+                      <span style={{ fontSize: 10, color: 'var(--text-faint)' }}>{timeAgo(c.createdAt)}</span>
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>{c.text}</p>
+                  </div>
+                </div>
+              ))}
+
+              {/* Comment input */}
+              <form onSubmit={handlePostComment} style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+                <input
+                  value={commentText}
+                  onChange={e => setCommentText(e.target.value)}
+                  placeholder="Add a comment..."
+                  style={{
+                    flex: 1, background: 'var(--bg-page)', border: '1px solid var(--border)',
+                    borderRadius: 6, padding: '7px 10px', fontSize: 12,
+                    color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit',
+                  }}
+                />
+                <button type="submit" disabled={!commentText.trim() || postingComment} className="btn-primary" style={{ fontSize: 11, padding: '7px 14px' }}>
+                  Post
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-faint)', fontSize: 13 }}>
+            Select a task to view details
+          </div>
+        )}
       </div>
     </div>
   )
