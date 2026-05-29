@@ -13,19 +13,22 @@ export function useOrgMembers() {
   const [members, setMembers] = useState([])
 
   useEffect(() => {
+    let alive = true
     getMyOrg()
-      .then(org =>
+      .then(org => {
+        if (!alive) return
         setMembers(
-          org.members.map(m => ({
+          (org.members ?? []).map(m => ({
             id: m.user.id,
             name: m.user.name,
-            initials: m.user.initials,
+            initials: m.user.initials ?? (m.user.name ?? '?').slice(0, 2).toUpperCase(),
             role: m.role,
             color: memberColor(m.user.id),
           }))
         )
-      )
+      })
       .catch(() => {}) // degrade gracefully — dropdown shows only Unassign
+    return () => { alive = false }
   }, [])
 
   return { members }
