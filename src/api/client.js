@@ -35,7 +35,13 @@ function processQueue(error, token = null) {
 }
 
 client.interceptors.response.use(
-  response => response,
+  // Auto-unwrap the TransformInterceptor { data: ... } envelope
+  response => {
+    if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+      response.data = response.data.data
+    }
+    return response
+  },
   async error => {
     const original = error.config
     if (error.response?.status === 401 && !original._retry) {
@@ -50,14 +56,16 @@ client.interceptors.response.use(
       original._retry = true
       isRefreshing = true
       try {
-        const { data } = await axios.post(
+        const res = await axios.post(
           `${import.meta.env.VITE_API_URL}/auth/refresh`,
           {},
           { withCredentials: true }
         )
-        setToken(data.accessToken)
-        processQueue(null, data.accessToken)
-        original.headers.Authorization = `Bearer ${data.accessToken}`
+        // Unwrap TransformInterceptor envelope
+        const refreshData = res.data?.data ?? res.data
+        setToken(refreshData.accessToken)
+        processQueue(null, refreshData.accessToken)
+        original.headers.Authorization = `Bearer ${refreshData.accessToken}`
         return client(original)
       } catch (err) {
         processQueue(err, null)
