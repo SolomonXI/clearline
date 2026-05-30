@@ -27,14 +27,6 @@ const SECTION_LABELS = {
   revenue: 'Revenue',
 }
 
-function mapTask(grouped, taskId, fn) {
-  const next = {}
-  for (const [section, tasks] of Object.entries(grouped)) {
-    next[section] = tasks.map(t => t.id === taskId ? fn(t) : t)
-  }
-  return next
-}
-
 export default function CloseDetail() {
   const { id } = useParams()
   const [searchParams] = useSearchParams()
@@ -148,7 +140,7 @@ export default function CloseDetail() {
                       onClick={() => { setActiveTask(t); setStatusDropdownOpen(false); setOwnerDropdownTaskId(null) }}
                       showOwnerDropdown={ownerDropdownTaskId === t.id}
                       members={members}
-                      onOwnerClick={e => { e.stopPropagation(); setOwnerDropdownTaskId(id => id === t.id ? null : t.id) }}
+                      onOwnerClick={e => { e.stopPropagation(); setOwnerDropdownTaskId(prev => prev === t.id ? null : t.id) }}
                       onOwnerUpdated={member => handleOwnerUpdate(t.id, member)}
                       onOwnerDropdownClose={() => setOwnerDropdownTaskId(null)}
                     />
@@ -218,7 +210,7 @@ export default function CloseDetail() {
                     </span>
                     <div style={{ position: 'relative' }}>
                       <div
-                        onClick={() => setOwnerDetailDropdownOpen(o => !o)}
+                        onClick={() => { setOwnerDropdownTaskId(null); setOwnerDetailDropdownOpen(o => !o) }}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 8,
                           padding: '5px 10px', borderRadius: 7,
