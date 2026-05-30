@@ -28,9 +28,8 @@ export default function InlineTaskAdd({ closeId, section, onCreated, onCancel })
     try {
       await createTask(closeId, {
         name: name.trim(),
-        section,           // uppercase backend enum key e.g. "AP"
+        section: section.toUpperCase().replace(/-/g, '_'), // "fixed-assets" → "FIXED_ASSETS"
         dueDay: day || 1,
-        status: 'NOT_STARTED',
       })
       onCreated()
       onCancel()
