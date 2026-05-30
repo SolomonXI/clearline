@@ -27,6 +27,9 @@ const SECTION_LABELS = {
   revenue: 'Revenue',
 }
 
+// Always show all sections so the user can add tasks even on an empty close
+const ALL_SECTIONS = ['ap', 'ar', 'gl', 'cash', 'fixed-assets', 'revenue']
+
 export default function CloseDetail() {
   const { id } = useParams()
   const [searchParams] = useSearchParams()
@@ -126,8 +129,9 @@ export default function CloseDetail() {
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            {Object.entries(grouped).map(([sectionKey, tasks]) => {
-              const label = SECTION_LABELS[sectionKey.toLowerCase().replace(/_/g, '-')] ?? sectionKey
+            {ALL_SECTIONS.map(sectionKey => {
+              const tasks = grouped[sectionKey] ?? []
+              const label = SECTION_LABELS[sectionKey] ?? sectionKey
               const done = tasks.filter(t => t.status === 'done').length
               return (
                 <div key={sectionKey}>
@@ -165,7 +169,7 @@ export default function CloseDetail() {
                 </div>
               )
             })}
-            {allTasks.length === 0 && (
+            {false && (
               <div style={{ padding: 24, fontSize: 12, color: 'var(--text-faint)', textAlign: 'center' }}>No tasks yet.</div>
             )}
           </div>
