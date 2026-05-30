@@ -10,8 +10,10 @@ import Avatar from '../components/Avatar.jsx'
 import Chip from '../components/Chip.jsx'
 import InlineTaskAdd from '../components/InlineTaskAdd.jsx'
 import StatusDropdown from '../components/StatusDropdown.jsx'
+import OwnerDropdown from '../components/OwnerDropdown.jsx'
 import { useClose } from '../hooks/useCloses.js'
 import { useTasks } from '../hooks/useTasks.js'
+import { useOrgMembers } from '../hooks/useOrgMembers.js'
 import { useComments } from '../hooks/useComments.js'
 import { postComment } from '../api/comments.js'
 import { timeAgo } from '../utils/enums.js'
@@ -25,11 +27,22 @@ const SECTION_LABELS = {
   revenue: 'Revenue',
 }
 
+function mapTask(grouped, taskId, fn) {
+  const next = {}
+  for (const [section, tasks] of Object.entries(grouped)) {
+    next[section] = tasks.map(t => t.id === taskId ? fn(t) : t)
+  }
+  return next
+}
+
 export default function CloseDetail() {
   const { id } = useParams()
   const [searchParams] = useSearchParams()
   const { close, loading: closeLoading } = useClose(id)
-  const { grouped, loading: tasksLoading, refetch: refetchTasks } = useTasks(id)
+  const { grouped, loading: tasksLoading, refetch: refetchTasks, updateTaskLocal } = useTasks(id)
+  const { members } = useOrgMembers()
+  const [ownerDropdownTaskId, setOwnerDropdownTaskId] = useState(null)
+  const [ownerDetailDropdownOpen, setOwnerDetailDropdownOpen] = useState(false)
   const allTasks = Object.values(grouped).flat()
 
   const [activeTask, setActiveTask] = useState(null)
@@ -42,6 +55,8 @@ export default function CloseDetail() {
 
   useEffect(() => {
     setStatusDropdownOpen(false)
+    setOwnerDetailDropdownOpen(false)
+    setOwnerDropdownTaskId(null)
     if (allTasks.length === 0) return
     const taskIdParam = searchParams.get('task')
     if (taskIdParam) {
@@ -68,6 +83,20 @@ export default function CloseDetail() {
   function handleStatusUpdate(newDisplayStatus) {
     setActiveTask(t => ({ ...t, status: newDisplayStatus }))
     refetchTasks()
+  }
+
+  function handleOwnerUpdate(taskId, member) {
+    const updates = {
+      ownerId: member?.id ?? null,
+      owner: member?.initials ?? null,
+      ownerFull: member?.name ?? null,
+    }
+    updateTaskLocal(taskId, updates)
+    if (activeTask?.id === taskId) {
+      setActiveTask(t => ({ ...t, ...updates }))
+    }
+    setOwnerDropdownTaskId(null)
+    setOwnerDetailDropdownOpen(false)
   }
 
   if (closeLoading || tasksLoading) return (
@@ -116,7 +145,12 @@ export default function CloseDetail() {
                       key={t.id}
                       task={t}
                       active={activeTask?.id === t.id}
-                      onClick={() => { setActiveTask(t); setStatusDropdownOpen(false) }}
+                      onClick={() => { setActiveTask(t); setStatusDropdownOpen(false); setOwnerDropdownTaskId(null) }}
+                      showOwnerDropdown={ownerDropdownTaskId === t.id}
+                      members={members}
+                      onOwnerClick={e => { e.stopPropagation(); setOwnerDropdownTaskId(id => id === t.id ? null : t.id) }}
+                      onOwnerUpdated={member => handleOwnerUpdate(t.id, member)}
+                      onOwnerDropdownClose={() => setOwnerDropdownTaskId(null)}
                     />
                   ))}
                   {activeAddSection === sectionKey ? (
@@ -174,12 +208,58 @@ export default function CloseDetail() {
                 </div>
               </div>
 
-              {activeTask.ownerFull && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Avatar initials={activeTask.owner} />
-                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{activeTask.ownerFull}</span>
-                </div>
-              )}
+              {/* Owner assignment pill */}
+              {(() => {
+                const activeOwnerMember = members.find(m => m.id === activeTask.ownerId) ?? null
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.5px', width: 72, flexShrink: 0 }}>
+                      Assigned to
+                    </span>
+                    <div style={{ position: 'relative' }}>
+                      <div
+                        onClick={() => setOwnerDetailDropdownOpen(o => !o)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '5px 10px', borderRadius: 7,
+                          border: '1px solid var(--border)', background: 'var(--bg-subtle)',
+                          cursor: 'pointer', transition: 'border-color 0.12s',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--text-faint)'}
+                        onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                      >
+                        {activeOwnerMember ? (
+                          <>
+                            <div style={{
+                              width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                              background: `linear-gradient(135deg, ${activeOwnerMember.color}, #7C3AED)`,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 7, fontWeight: 700, color: '#fff',
+                            }}>
+                              {activeOwnerMember.initials}
+                            </div>
+                            <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
+                              {activeOwnerMember.name}
+                            </span>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>Unassigned</span>
+                        )}
+                        <span style={{ fontSize: 10, color: 'var(--text-faint)', marginLeft: 2 }}>▾</span>
+                      </div>
+                      {ownerDetailDropdownOpen && (
+                        <OwnerDropdown
+                          currentOwnerId={activeTask.ownerId ?? null}
+                          taskId={activeTask.id}
+                          members={members}
+                          onUpdated={member => handleOwnerUpdate(activeTask.id, member)}
+                          onClose={() => setOwnerDetailDropdownOpen(false)}
+                        />
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
 
             <AiInsight taskId={activeTask.id} />
